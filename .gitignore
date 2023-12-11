@@ -1,0 +1,21 @@
+# Python environments
+.venv/
+
+# IDE/Editor folders
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data and large files
+/data/
+*.bin
+*.dat
+
+# Model checkpoints
+/checkpoints/
+
+# Logs and results
+/logs/
+/results/
