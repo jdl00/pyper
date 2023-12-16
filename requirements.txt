@@ -1,5 +1,3 @@
-torchvision
-torchaudio
+torch
 numpy
-causal-conv1d<=1.0.2
-mamba-ssm
+einops
