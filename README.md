@@ -1,4 +1,4 @@
-# Pyper: Tiny MoEs?
+# Pyper: Tiny MoEs
 
 ## Contents
 
