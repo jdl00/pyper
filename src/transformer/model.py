@@ -3,12 +3,10 @@ import numpy as np
 
 from math import sqrt
 from torch import nn
-from torch.utils.data import Dataset
 from einops import reduce, rearrange
 from typing import Optional, Tuple
 
 from .args.model_args import TModelArgs
-from .args.train_args import TTrainArgs
 
 # Define new types for mask and cache
 MaskType = Optional[torch.Tensor]
@@ -226,35 +224,6 @@ class Transformer(nn.Module):
         return self.output(x)
 
 
-def train_expert(
-    model_name: str,
-    model_args: TModelArgs,
-    train_args: TTrainArgs,
-    train_dataloader: Dataset = None,
-    test_dataloader: Dataset = None,
-):
-    model = Transformer(model_args)
-
+def summary(model: nn.Module):
+    # TODO: Fefactor this to more closely match tf.summary()
     print(model)
-
-    """
-    optimizer = optim.AdamW(model.parameters(), lr=train_args.lr)
-    loss_fn = nn.CrossEntropyLoss()
-
-    num_epochs = TrainArgs.epochs
-    for epoch in range(num_epochs):
-        for batch in train_dataloader:
-            # Forward pass
-            input_ids, labels = batch
-            outputs = model(input_ids)
-            loss = loss_fn(outputs.logits, labels)
-
-            # Backward and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            print(
-                "Epoch [{}/{}], Loss: {:.4f}".format(epoch + 1, num_epochs, loss.item())
-            )
-    """
