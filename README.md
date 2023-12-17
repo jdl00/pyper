@@ -1,5 +1,7 @@
 # Pyper: Tiny MoEs
 
+[![forthebadge made-with-python](http://ForTheBadge.com/images/badges/made-with-python.svg)](https://www.python.org/)
+
 ## Contents
 
 1. [Overview](#overview)
@@ -7,7 +9,6 @@
 3. [Training](#training)
 4. [Requirements](#requirements)
 5. [References](#references)
-
 
 ## Overview
 
