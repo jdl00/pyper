@@ -50,7 +50,7 @@ The training of each expert employs a custom training loop, including loss compu
 
 ## Requirements
 
-- Python 3.1
+- Python 3.10
 - PyTorch
 - einops
 
