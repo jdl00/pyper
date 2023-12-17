@@ -7,5 +7,5 @@ class TTrainArgs:
     lr: float
     lr_decay: float
     batch_size: int
-    early_stoping: bool
+    early_stopping: bool
     use_warmup: bool

@@ -1,12 +1,14 @@
 import torch
+import numpy as np
+
 from math import sqrt
-from torch import nn, optim
+from torch import nn
 from torch.utils.data import Dataset
 from einops import reduce, rearrange
 from typing import Optional, Tuple
 
-from src.transformer.args.model_args import ModelArgs
-from src.transformer.args.train_args import TrainArgs
+from .args.model_args import TModelArgs
+from .args.train_args import TTrainArgs
 
 # Define new types for mask and cache
 MaskType = Optional[torch.Tensor]
@@ -29,14 +31,70 @@ class RMSNorm(nn.Module):
 
 
 class RoPE(nn.Module):
-    def __init__(self, dims: int, num_heads: int, rotary_dim: int):
+    def __init__(self, dims: int, traditional: bool = False, base: float = 10000):
         super().__init__()
+        self.dims = dims
+        self.traditional = traditional
+        self.base = base
 
-        self.num_heads = num_heads
+    def _extra_repr(self):
+        return f"{self.dims}, traditional={self.traditional}"
 
-        self.rope = nn.RoPE(rotary_dim, traditional=False)
-        self.Wqkv = nn.Linear(dims, 3 * dims)
-        self.out_proj = nn.Linear(dims, dims)
+    @staticmethod
+    def create_cos_sin_theta(N, dims, offset=0, base=10000, dtype=torch.float32):
+        position = torch.arange(offset, offset + N, dtype=dtype).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, dims, 2).float() * (-np.log(base) / dims))
+        theta = position * div_term
+        return torch.cos(theta), torch.sin(theta)
+
+    def _compute_rope(self, costheta, sintheta, x):
+        x1, x2 = x[..., : self.dims // 2], x[..., self.dims // 2 : self.dims]
+        rx1, rx2 = x1 * costheta - x2 * sintheta, x1 * sintheta + x2 * costheta
+
+        if self.dims < x.shape[-1]:
+            rx = torch.cat([rx1, rx2, x[..., self.dims :]], dim=-1)
+        else:
+            rx = torch.cat([rx1, rx2], dim=-1)
+
+        return rx
+
+    def _compute_traditional_rope(self, costheta, sintheta, x):
+        x1, x2 = x[..., ::2], x[..., 1::2]
+        rx1, rx2 = x1 * costheta - x2 * sintheta, x1 * sintheta + x2 * costheta
+
+        if self.dims < x.shape[-1]:
+            raise NotImplementedError(
+                "RoPE doesn't implement partial traditional application"
+            )
+
+        rx = rearrange([rx1, rx2], "two b n d -> b n (two d)")
+
+        return rx
+
+    def forward(self, x, offset: int = 0):
+        shape = x.shape
+        x = rearrange(x, "b n d -> (b n) d")
+        N = x.shape[1] + offset
+        costheta, sintheta = self.create_cos_sin_theta(
+            N, self.dims, offset=offset, base=self.base, dtype=x.dtype
+        )
+
+        rope = (
+            self._compute_traditional_rope if self.traditional else self._compute_rope
+        )
+        rx = rope(costheta, sintheta, x)
+
+        return rx.reshape(shape)
+
+
+class RoPEAttention(nn.Module):
+    def __init__(self, args: TModelArgs):
+        super().__init__()
+        self.num_heads = args.n_heads
+        self.rope = RoPE(args.dim // 2, traditional=False)
+        self.Wqkv = nn.Linear(args.dim, 3 * args.dim)
+        self.dropout = nn.Dropout(args.dropout_rate)
+        self.out_proj = nn.Linear(args.dim, args.dim)
 
     def forward(self, x: torch.Tensor, mask: MaskType = None, cache: CacheType = None):
         qkv = self.Wqkv(x)
@@ -67,6 +125,7 @@ class RoPE(nn.Module):
         # TODO: Implement flash attention (allow for both mps and cuda)
         scale = sqrt(1 / queries.size(-1))
         scores = torch.matmul(queries * scale, keys.transpose(-2, -1))
+        scores = self.dropout(scores)
         if mask is not None:
             scores += mask
 
@@ -78,7 +137,7 @@ class RoPE(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: TModelArgs):
         super().__init__()
         self.linear1 = nn.Linear(args.dim, args.hidden_dim)
         self.linear2 = nn.Linear(args.hidden_dim, args.dim)
@@ -106,11 +165,11 @@ class FeedForward(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: TModelArgs):
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
-        self.attention = RoPE(args)
+        self.attention = RoPEAttention(args=args)
         self.feed_forward = FeedForward(args=args)
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
@@ -139,7 +198,7 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: TModelArgs):
         super().__init__()
         self.args = args
         self.vocab_size = args.vocab_size
@@ -169,12 +228,16 @@ class Transformer(nn.Module):
 
 def train_expert(
     model_name: str,
-    model_args: ModelArgs,
-    train_args: TrainArgs,
-    train_dataloader: Dataset,
-    test_dataloader: Dataset,
+    model_args: TModelArgs,
+    train_args: TTrainArgs,
+    train_dataloader: Dataset = None,
+    test_dataloader: Dataset = None,
 ):
     model = Transformer(model_args)
+
+    print(model)
+
+    """
     optimizer = optim.AdamW(model.parameters(), lr=train_args.lr)
     loss_fn = nn.CrossEntropyLoss()
 
@@ -194,3 +257,4 @@ def train_expert(
             print(
                 "Epoch [{}/{}], Loss: {:.4f}".format(epoch + 1, num_epochs, loss.item())
             )
+    """
