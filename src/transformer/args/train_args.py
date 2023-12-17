@@ -9,3 +9,6 @@ class TTrainArgs:
     batch_size: int
     early_stopping: bool
     use_warmup: bool
+    gradient_accumulation_steps: int
+    step_size: int
+    gamma: float
