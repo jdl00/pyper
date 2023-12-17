@@ -1,3 +1,4 @@
 torch
+torchsummary
 numpy
 einops

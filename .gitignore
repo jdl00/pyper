@@ -8,6 +8,9 @@
 .DS_Store
 Thumbs.db
 
+# Python cache files
+__pycache__/
+
 # Data and large files
 /data/
 *.bin
