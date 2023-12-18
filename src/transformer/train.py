@@ -16,6 +16,7 @@ def train_expert(
     train_args: TTrainArgs,
     train_dataloader: Dataset = None,
     test_dataloader: Dataset = None,
+    max_batch_size: int = 16,
 ):
     model = Transformer(model_args)
     summary(model)
@@ -31,14 +32,15 @@ def train_expert(
     # Move the model to the selected device
     model.to(device)
 
-    # Create the
+    # Create the optimisers loss function and schedulers
     optimizer = optim.AdamW(model.parameters(), lr=train_args.lr)
     loss_fn = nn.CrossEntropyLoss()
     scheduler = optim.lr_scheduler.StepLR(
         optimizer, step_size=train_args.step_size, gamma=train_args.gamma
     )
-    gradient_accumulation_steps = train_args // 16
+    gradient_accumulation_steps = max(1, max_batch_size // train_args.batch_size)
 
+    # Actual training loop
     for epoch in range(train_args.epochs):
         model.zero_grad()  # Reset gradients at the start of each epoch
         for i, (inputs, targets) in enumerate(train_dataloader):
