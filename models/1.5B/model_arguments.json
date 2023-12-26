@@ -1,0 +1,12 @@
+{
+  "dim": 2048,
+  "n_layers": 16,
+  "head_dim": 192,
+  "hidden_dim": 15360,
+  "n_heads": 16,
+  "n_kv_heads": 6,
+  "norm_eps": 1e-6,
+  "vocab_size": 50000,
+  "dropout_rate": 0.1,
+  "max_seq_length": 1024
+}
