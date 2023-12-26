@@ -4,23 +4,34 @@ from torch.nn import optim
 from torch.utils.data import Dataset
 
 
-from .model import Transformer, summary
-from .args.train_args import TTrainArgs
-from .args.model_args import TModelArgs
+from .model import Transformer
+from .args.t_train_args import TTrainArgs
 from .training_helpers import save_checkpoint
 
 
+def create_parameters(model: nn.Module, train_args: TTrainArgs):
+    # Declare the optimiser
+    optimizer = optim.AdamW(model.parameters(), lr=train_args.lr)
+
+    # declare the loss function
+    loss_fn = nn.CrossEntropyLoss()
+
+    # Create the cosine learning rate annealer
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+    )
+
+    return (optimizer, loss_fn, lr_scheduler)
+
+
 def train_expert(
+    model: Transformer,
     model_name: str,
-    model_args: TModelArgs,
     train_args: TTrainArgs,
     train_dataloader: Dataset = None,
     test_dataloader: Dataset = None,
     max_batch_size: int = 16,
 ):
-    model = Transformer(model_args)
-    summary(model)
-
     # Check available devices and set the model to the correct device
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -33,11 +44,8 @@ def train_expert(
     model.to(device)
 
     # Create the optimisers loss function and schedulers
-    optimizer = optim.AdamW(model.parameters(), lr=train_args.lr)
-    loss_fn = nn.CrossEntropyLoss()
-    scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=train_args.step_size, gamma=train_args.gamma
-    )
+    optimizer, loss, scheduler = create_parameters(model, train_args)
+
     gradient_accumulation_steps = max(1, max_batch_size // train_args.batch_size)
 
     # Actual training loop
@@ -46,7 +54,7 @@ def train_expert(
         for i, (inputs, targets) in enumerate(train_dataloader):
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
-            loss = loss_fn(outputs, targets)
+            loss = loss(outputs, targets)
 
             loss.backward()
             # Gradient accumulation

@@ -6,7 +6,7 @@ from torch import nn
 from einops import reduce, rearrange
 from typing import Optional, Tuple
 
-from .args.model_args import TModelArgs
+from .args.t_model_args import TModelArgs
 
 # Define new types for mask and cache
 MaskType = Optional[torch.Tensor]
@@ -22,7 +22,8 @@ class RMSNorm(nn.Module):
 
     def forward(self, x: torch.Tensor):
         # Compute the root mean square value
-        rms = torch.sqrt(reduce(x, "b l d -> b l", "mean", d=self.dim) + self.eps)
+        rms = torch.sqrt(
+            reduce(x, "b l d -> b l", "mean", d=self.dim) + self.eps)
 
         # Normalize and scale
         return x / rms.unsqueeze(-1) * self.scale
@@ -39,18 +40,19 @@ class RoPE(nn.Module):
         return f"{self.dims}, traditional={self.traditional}"
 
     @staticmethod
-    def create_cos_sin_theta(N, dims, offset=0, base=10000, dtype=torch.float32):
+    def create_cos_sin_theta(N, dims, offset=0, base=10000.0, dtype=torch.float32):
         position = torch.arange(offset, offset + N, dtype=dtype).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, dims, 2).float() * (-np.log(base) / dims))
+        div_term = torch.exp(torch.arange(
+            0, dims, 2).float() * (-np.log(base) / dims))
         theta = position * div_term
         return torch.cos(theta), torch.sin(theta)
 
     def _compute_rope(self, costheta, sintheta, x):
-        x1, x2 = x[..., : self.dims // 2], x[..., self.dims // 2 : self.dims]
+        x1, x2 = x[..., : self.dims // 2], x[..., self.dims // 2: self.dims]
         rx1, rx2 = x1 * costheta - x2 * sintheta, x1 * sintheta + x2 * costheta
 
         if self.dims < x.shape[-1]:
-            rx = torch.cat([rx1, rx2, x[..., self.dims :]], dim=-1)
+            rx = torch.cat([rx1, rx2, x[..., self.dims:]], dim=-1)
         else:
             rx = torch.cat([rx1, rx2], dim=-1)
 
@@ -168,8 +170,8 @@ class Block(nn.Module):
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.attention = RoPEAttention(args=args)
-        self.feed_forward = FeedForward(args=args)
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.feed_forward = FeedForward(args=args)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.dropout = nn.Dropout(args.dropout_rate)
         self.args = args
@@ -203,19 +205,14 @@ class Transformer(nn.Module):
         self.dim = args.dim
         self.max_seq_length = args.max_seq_length
 
-        self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
-        self.pos_embeddings = nn.Embedding(self.max_seq_length, args.dim)
-
-        self.layers = nn.ModuleList([Block(args=args) for _ in range(args.n_layers)])
+        self.layers = nn.ModuleList([Block(args=args)
+                                    for _ in range(args.n_layers)])
         self.norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
 
     def forward(self, x: torch.Tensor, positions: torch.Tensor):
         # Assume 'x' is the input tensor with token indices, and 'positions'
         # is a tensor with position indices.
-
-        # Add positional embeddings to token embeddings
-        x = self.tok_embeddings(x) + self.pos_embeddings(positions)
 
         for layer in self.layers:
             x, _ = layer(x)
@@ -224,6 +221,43 @@ class Transformer(nn.Module):
         return self.output(x)
 
 
-def summary(model: nn.Module):
-    # TODO: Fefactor this to more closely match tf.summary()
-    print(model)
+def calculate_parameters(args):
+    # RMSNorm
+    rmsnorm_params = args.dim
+
+    # RoPEAttention
+    rope_attention_params = 3 * args.dim * args.dim + args.dim * args.dim
+
+    # FeedForward
+    ff_params = args.dim * args.hidden_dim + args.hidden_dim * args.dim
+    # Assuming two vectors for mean and variance
+    ff_norm_params = 2 * args.hidden_dim
+
+    # Block
+    block_params = rope_attention_params + \
+        ff_params + ff_norm_params + rmsnorm_params
+
+    # Transformer
+    transformer_params = block_params * args.n_layers + args.dim * args.vocab_size
+
+    return (rmsnorm_params + rope_attention_params + ff_params + ff_norm_params
+            + block_params + transformer_params)
+
+
+def summary(args: TModelArgs, model: nn.Module):
+
+    def verbose(n_params: int):
+        if n_params < 1e6:
+            return f"{n_params}"
+        elif n_params < 1e9:
+            return f"{n_params / 1e6:.2f}M"
+        else:
+            return f"{n_params / 1e9:.2f}B"
+
+    blocks = [block for block in model.layers]
+
+    for layers in blocks:
+        print(layers)
+
+    n_params = calculate_parameters(args)
+    print(f"Total Param Count: {verbose(n_params)}")
